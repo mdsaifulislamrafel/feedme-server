@@ -6,8 +6,6 @@ import globalErrorHandler from './app/errors/globalErrorHandler';
 import cookieParser from 'cookie-parser';
 const app = express();
 
-// Log middleware initialization
-console.log('Initializing middleware...');
 
 // Using parsers - order matters!
 app.use(express.json({ limit: '10mb' }));
@@ -41,8 +39,7 @@ app.use('/api', router);
 
 // Basic health check
 app.get('/', (req: Request, res: Response) => {
-  console.log('Server is running and receiving requests');
-  res.send('Server is running 💨🏃‍♀️');
+  res.send('Server is running');
 });
 
 // Global error handler
