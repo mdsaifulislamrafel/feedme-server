@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { orderController } from './order.controller';
 import validateRequest from '../../middleware/validateRequest';
 import { orderValidation } from './order.validation';
@@ -9,10 +9,44 @@ import nodemailer from 'nodemailer';
 import config from '../../config';
 import { OrderModel } from './order.model';
 import { orderService } from './order.service';
-// import validateRequest from '../../middleware/validateRequest';
-// import orderValidation from './order.validation';
 
 const router = express.Router();
+
+// Helper function for sending emails
+const sendEmail = async ({ email, subject, html }: { email: string; subject: string; html: string }) => {
+  const transporter = nodemailer.createTransport({
+    host: config.EMAIL_HOST,
+    port: Number(config.EMAIL_PORT),
+    secure: config.EMAIL_PORT === '465',
+    auth: {
+      user: config.EMAIL_USER,
+      pass: config.EMAIL_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false
+    },
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100
+  });
+
+  return await transporter.sendMail({
+    from: {
+      name: "FeedMe Order Confirmation",
+      address: config.EMAIL_USER || 'noreply@feedme.com'
+    },
+    to: email,
+    subject: subject,
+    html: html,
+    headers: {
+      'X-Priority': '1',
+      'Importance': 'high',
+      'X-MSMail-Priority': 'High',
+      'Precedence': 'bulk'
+    },
+    text: `FeedMe Order Information - Please see the HTML version of this email for complete details.`
+  });
+};
 
 // Verify payment
 router.get(
@@ -22,7 +56,6 @@ router.get(
 );
 
 // Order routes
-//router.post('/', auth(USER_ROLE.user), orderController.createOrder);
 router.post(
   '/',
   auth(USER_ROLE.admin, USER_ROLE.customer),
@@ -38,7 +71,6 @@ router.post(
   orderController.createOrderFromCart,
 );
 
-//router.post('/', auth(USER_ROLE.user), orderController.createOrder);
 router.get(
   '/',
   auth(USER_ROLE.admin, USER_ROLE.customer),
@@ -53,6 +85,7 @@ router.get(
   auth(USER_ROLE.admin, USER_ROLE.customer),
   orderController.getDetails,
 );
+
 // Get revenue
 router.get('/revenue', auth(USER_ROLE.admin), orderController.getRevenue);
 
@@ -109,15 +142,14 @@ router.get(
 );
 
 // Test route for email (temporary)
-router.get(
-  '/test-email',
-  async (req: Request, res: Response) => {
+router.get('/test-email', (req: Request, res: Response) => {
+  const handleTestEmail = async () => {
     try {
       // Create simple test order data
       const testOrder = {
         _id: 'test-order-123',
         name: 'Test Customer',
-        email: req.query.email || 'test@example.com',
+        email: req.query.email?.toString() || 'test@example.com',
         phone: '1234567890',
         address: 'Test Address',
         city: 'Test City',
@@ -150,7 +182,7 @@ router.get(
 
       console.log('Test email result:', result);
 
-      res.status(200).json({
+      return res.status(200).json({
         status: true,
         message: 'Test email sent successfully',
         data: {
@@ -161,19 +193,20 @@ router.get(
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Test email failed:', error);
-      res.status(500).json({
+      return res.status(500).json({
         status: false,
         message: 'Failed to send test email',
         error: errorMessage
       });
     }
-  }
-);
+  };
+  
+  handleTestEmail();
+});
 
 // Test route for sending email to a real order
-router.get(
-  '/send-order-email/:orderId',
-  async (req: Request, res: Response) => {
+router.get('/send-order-email/:orderId', (req: Request, res: Response) => {
+  const handleSendOrderEmail = async () => {
     try {
       const orderId = req.params.orderId;
       const targetEmail = req.query.email?.toString();
@@ -244,7 +277,7 @@ router.get(
       const messageId = mailResult?.messageId || 'No message ID';
       console.log('Email sent result:', {messageId});
       
-      res.status(200).json({
+      return res.status(200).json({
         status: true,
         message: 'Order confirmation email sent successfully',
         data: {
@@ -256,44 +289,50 @@ router.get(
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to send order email:', error);
-      res.status(500).json({
+      return res.status(500).json({
         status: false,
         message: 'Failed to send order email',
         error: errorMessage
       });
     }
-  }
-);
+  };
+  
+  handleSendOrderEmail();
+});
 
 // Test route for sending provider notifications for an order
 router.get(
   '/send-provider-notifications/:orderId',
   auth(USER_ROLE.admin),
-  async (req: Request, res: Response) => {
-    try {
-      const orderId = req.params.orderId;
-      
-      console.log('Manually sending provider notifications for order:', orderId);
-      
-      // Call the provider notification service
-      await orderService.sendProviderOrderNotifications(orderId);
-      
-      res.status(200).json({
-        status: true,
-        message: 'Provider notifications sent successfully',
-        data: {
-          orderId: orderId
-        }
-      });
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Failed to send provider notifications:', error);
-      res.status(500).json({
-        status: false,
-        message: 'Failed to send provider notifications',
-        error: errorMessage
-      });
-    }
+  (req: Request, res: Response) => {
+    const handleProviderNotifications = async () => {
+      try {
+        const orderId = req.params.orderId;
+        
+        console.log('Manually sending provider notifications for order:', orderId);
+        
+        // Call the provider notification service
+        await orderService.sendProviderOrderNotifications(orderId);
+        
+        return res.status(200).json({
+          status: true,
+          message: 'Provider notifications sent successfully',
+          data: {
+            orderId: orderId
+          }
+        });
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Failed to send provider notifications:', error);
+        return res.status(500).json({
+          status: false,
+          message: 'Failed to send provider notifications',
+          error: errorMessage
+        });
+      }
+    };
+    
+    handleProviderNotifications();
   }
 );
 
